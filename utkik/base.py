@@ -3,6 +3,7 @@ from django.shortcuts import render_to_response
 from django.template import RequestContext
 from django.utils.translation import ugettext_lazy as _
 from utkik.decorators import http_methods
+from utkik.dispatch import ViewWrapper
 
 
 class ViewException(Exception):
@@ -51,6 +52,23 @@ class View(object):
         self.request = request
         return self._decorate(self.get_response)(request, *args, **kwargs)
 
+    @classmethod
+    def as_view(klass, **kwargs):
+        """
+        Create a :class:`utkik.dispatch.ViewWrapper` for this view.
+
+        This is primarily to allow for "Django generic view"-like behaviour in
+        a URLconf. For example::
+
+            from utkik import View
+
+            patterns = urlpatterns('',
+                ...
+                url('^about/$', View.as_view(template='about.html'),
+            )
+        """
+        return ViewWrapper(view=klass, attributes=kwargs)
+
     def _decorate(self, f):
         """Decorate function f with decorators from ``self.decorators`` and
         decorators based on ``self.methods``.
@@ -58,7 +76,9 @@ class View(object):
         for d in reversed(self.decorators):
             f = d(f)
         methods = [m for m in self.methods if hasattr(self, m.lower())]
-        return http_methods(*methods)(f)
+        if methods:
+            f = http_methods(*methods)(f)
+        return f
 
     def get_response(self, request, *args, **kwargs):
         """Returns the response from a successful request to the view. In it's
@@ -67,13 +87,14 @@ class View(object):
         will simply call and return ``self.render``. Request is just passed in
         here for decorator compatibilty reasons.
         """
-        return self.get_handler()(*args, **kwargs) or self.render()
+        handler = self.get_handler()
+        return handler and handler(*args, **kwargs) or self.render()
 
     def get_handler(self):
         """Return a suitable handler. You can override this for example if you
         want another handler for ajax calls.
         """
-        return getattr(self, self.request.method.lower())
+        return getattr(self, self.request.method.lower(), None)
 
     def get_context(self):
         """If you want to add some extra context or modify the current context

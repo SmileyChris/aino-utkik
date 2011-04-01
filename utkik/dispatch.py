@@ -16,8 +16,9 @@ handler500 = 'django.views.defaults.server_error'
 class ViewWrapper(object):
     """A view wrapper that makes function and class based views callable"""
 
-    def __init__(self, view):
+    def __init__(self, view, attributes=None):
         self.view = view
+        self.attributes = attributes or {}
         update_wrapper(self, view)
 
     @property
@@ -35,7 +36,10 @@ class ViewWrapper(object):
         the view arguments.
         """
         if hasattr(self.view, 'dispatch'):
-            return self.view().dispatch(request, *args, **kwargs)
+            view = self.view()
+            for key, value in self.attributes.iteritems():
+                setattr(view, key, value)
+            return view.dispatch(request, *args, **kwargs)
         elif callable(self.view):
             return self.view(request, *args, **kwargs)
         raise ImproperlyConfigured('%s.%s does not define a view function or '
